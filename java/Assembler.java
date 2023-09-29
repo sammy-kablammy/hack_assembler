@@ -7,23 +7,68 @@ enum COMMAND {
     L_COMMAND
 }
 
-class Parser {
+/*
+ * "why do the variables need to be handled on the second pass instead of the
+ * first, along with all the labels?"
+ *
+ * see this code:
+ *
+ * // [stuff happens here]
+ * 
+ * @END_OF_PROGRAM
+ * 
+ * // [stuff happens here]
+ * 
+ * (END_OF_PROGRAM)
+ * 
+ * ...you need to know where the END_OF_PROGRAM label is located.
+ * don't try to find a new memory location for "END_OF_PROGRAM" at the start.
+ * its definition is coming later.
+ */
 
+// note for the inevitable rewrite of this:
+// i think the parser class should have 'advanceToNextValidInstruction'
+
+// As per chapter 6, the Parser class should encapsulate all access to the input
+// file.
+class Parser {
+    private String inputFilename;
     private Scanner fileScanner;
     private String currentLine;
-    private int lineNumber = 0;
 
-    Parser(File f) {
+    public Parser(String inputFilename) {
+        this.inputFilename = inputFilename;
+        File f = new File(this.inputFilename);
         try {
             fileScanner = new Scanner(f);
         } catch (FileNotFoundException e) {
-            System.out.println("file not found 💀");
+            System.out.println("file not found or something 💀");
+            System.out.println(e);
             return;
         }
         this.advance();
     }
 
-    boolean hasMoreCommands() {
+    public void close() {
+        this.fileScanner.close();
+    }
+
+    public void reset() {
+        // TODO figure out try-catch situation
+        // ^^ that applies to this whole file, not just here 🫣
+        try {
+            this.fileScanner.close();
+            this.fileScanner = new Scanner(new File(this.inputFilename));
+            this.currentLine = null;
+            this.advance();
+        } catch (IOException e) {
+            System.out.println("file not found or something 💀");
+            System.out.println(e);
+            System.exit(69);
+        }
+    }
+
+    public boolean hasMoreCommands() {
         return this.fileScanner.hasNextLine() && !this.currentLine.isEmpty();
     }
 
@@ -40,7 +85,7 @@ class Parser {
         // return s.substring(0, idx);
     }
 
-    void advance() {
+    public void advance() {
         if (!this.fileScanner.hasNextLine()) {
             return;
         }
@@ -51,10 +96,9 @@ class Parser {
         }
 
         this.currentLine = formatted;
-        this.lineNumber++;
     }
 
-    COMMAND commandType() {
+    public COMMAND commandType() {
         if (this.currentLine.charAt(0) == '@') {
             return COMMAND.A_COMMAND;
         }
@@ -66,16 +110,17 @@ class Parser {
         return COMMAND.C_COMMAND;
     }
 
-    String symbol() {
+    public String symbol() {
         if (this.commandType() == COMMAND.A_COMMAND) {
             return this.currentLine.substring(1);
         }
-        throw new UnsupportedOperationException("uh oh bucko. can't figure out"
-                + "the symbol of a non-A-type instruction.");
-        // TODO handle symbolic labels here
+        if (this.commandType() == COMMAND.L_COMMAND) {
+            return this.currentLine.substring(1, this.currentLine.length() - 1);
+        }
+        throw new UnsupportedOperationException("cannot find symbol of a non A or L instruction");
     }
 
-    String dest() {
+    public String dest() {
         if (this.commandType() != COMMAND.C_COMMAND) {
             throw new UnsupportedOperationException("cannot get dest of non C inst :(");
         }
@@ -87,7 +132,7 @@ class Parser {
         return this.currentLine.substring(0, idx);
     }
 
-    String comp() {
+    public String comp() {
         if (this.commandType() != COMMAND.C_COMMAND) {
             throw new UnsupportedOperationException("cannot get comp of non C inst :(");
         }
@@ -109,7 +154,7 @@ class Parser {
         return this.currentLine.substring(idxOfEquals + 1, idxOfSemi);
     }
 
-    String jump() {
+    public String jump() {
         if (this.commandType() != COMMAND.C_COMMAND) {
             throw new UnsupportedOperationException("cannot get jump of non C inst :(");
         }
@@ -121,15 +166,11 @@ class Parser {
         }
         return this.currentLine.substring(idx + 1);
     }
-
-    void close() {
-        this.fileScanner.close();
-    }
 }
 
 class Code {
     // Returns 3 bits.
-    static int dest(String mnemonic) {
+    public static int dest(String mnemonic) {
         int result = 0x0000;
 
         if (mnemonic.contains("A")) {
@@ -146,7 +187,7 @@ class Code {
     }
 
     // Returns 7 bits.
-    static int comp(String mnemonic) {
+    public static int comp(String mnemonic) {
         Map<String, Integer> map = new HashMap<>();
         // sorry the spacing is strange but the formatter doesn't like it otherwise
         /* ___0 1010 10__ ____ */ map.put("0", 0x0A80);
@@ -183,7 +224,7 @@ class Code {
     }
 
     // Returns 3 bits.
-    static int jump(String mnemonic) {
+    public static int jump(String mnemonic) {
         Map<String, Integer> map = new HashMap<>();
         map.put("", 0x0000);
         map.put("JGT", 0x0001);
@@ -199,20 +240,34 @@ class Code {
 }
 
 class SymbolTable {
-    SymbolTable() {
-        throw new UnsupportedOperationException("nope.");
+    private Map<String, Integer> map;
+
+    public SymbolTable() {
+        this.map = new TreeMap<>();
+        // Add all the predefined Hack language symbols
+        // TODO are the symbols case-sensitive?
+        this.addEntry("SP", 0);
+        this.addEntry("LCL", 1);
+        this.addEntry("ARG", 2);
+        this.addEntry("THIS", 3);
+        this.addEntry("THAT", 4);
+        for (int i = 0; i <= 15; i++) {
+            this.addEntry("R" + i, i);
+        }
+        this.addEntry("SCREEN", 16384);
+        this.addEntry("KBD", 24576);
     }
 
-    void addEntry(String symbol, int address) {
-        throw new UnsupportedOperationException("nope.");
+    public void addEntry(String symbol, int address) {
+        this.map.put(symbol, address);
     }
 
-    boolean contains(String symbol) {
-        throw new UnsupportedOperationException("nope.");
+    public boolean contains(String symbol) {
+        return this.map.containsKey(symbol);
     }
 
-    int getAddress(String symbol) {
-        throw new UnsupportedOperationException("nope.");
+    public int getAddress(String symbol) {
+        return this.map.get(symbol);
     }
 }
 
@@ -249,22 +304,70 @@ public class Assembler {
         return res;
     }
 
+    private static boolean isNumeric(String s) {
+        try {
+            Integer.parseInt(s);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
     public static void main(String[] args) throws IOException {
         if (args.length != 1) {
             System.out.println("Usage: 'java Assembler input_file.asm'");
             System.exit(1);
         }
-        String asmFilename = args[0];
-        if (!asmFilename.contains(".asm")) {
-            System.out.print("Invalid filename '" + asmFilename + "'. ");
+        String inputFilename = args[0];
+        if (!inputFilename.contains(".asm")) {
+            System.out.print("Invalid filename '" + inputFilename + "'. ");
             System.out.println("Expected '<input_file>.asm'.");
             System.exit(2);
         }
-        Parser p = new Parser(new File(asmFilename));
-        String outputFileName = asmFilename.substring(0, asmFilename.length() - 4) + ".hack";
+        Parser p = new Parser(inputFilename);
+        String outputFileName = inputFilename.substring(0, inputFilename.length() - 4) + ".hack";
         FileWriter writer = new FileWriter(new File(outputFileName));
+        int outputFileLineNumber = 0;
 
         try {
+            // TODO maybe don't do while(true) but for now it'll be fine... right???
+            // First pass: find all symbols and map them to RAM or ROM addresses
+            // NOPE! only map labels to their line numbers.
+            // variables are all handled during the second pass.
+            // NOTE: all custom/user-defined symbols should begin at 16.
+            // (15 is the maximum predefined symbol)
+            int nextAvailableMemoryAddress = 16;
+            SymbolTable symbolTable = new SymbolTable();
+            while (true) {
+                // if this current line contains a symbol, then add it
+                COMMAND type = p.commandType();
+                if (type == COMMAND.L_COMMAND) {
+                    // there is a (Label) symbol on this line
+                    String symbol = p.symbol();
+                    // just to be clear, the symbol reeeallly shouldn't be
+                    // numeric. but i'll just check anyways. 👀 TODO
+                    if (!isNumeric(symbol) && !symbolTable.contains(symbol)) {
+                        symbolTable.addEntry(symbol, outputFileLineNumber);
+                    }
+                    // [don't increment the output file line number for L-type
+                    // instructions. this line will disappear once assembled]
+                } else if (type == COMMAND.A_COMMAND) {
+                    outputFileLineNumber++;
+                } else { // command is C-type
+                    // no symbol business here.
+                    // there shouldn't be any new symbols on C-type lines.
+                    outputFileLineNumber++;
+                }
+                if (p.hasMoreCommands()) {
+                    p.advance();
+                } else {
+                    break;
+                }
+            }
+
+            p.reset(); // TODO find a better way to do this
+
+            // Second pass: use the symbol table
             // TODO maybe don't do while(true) but for now it'll be fine... right???
             while (true) {
                 int assembled = 0;
@@ -275,22 +378,42 @@ public class Assembler {
                     assembled |= Code.comp(p.comp());
                     assembled |= Code.jump(p.jump());
                     // writer.write(instToStringCType(assembled));
+                    writer.write(instToStringNoSpacing(assembled));
+                    writer.write("\n");
                 } else if (type == COMMAND.A_COMMAND) {
-                    assembled |= Integer.parseInt(p.symbol());
+                    String symbol = p.symbol();
+                    if (isNumeric(symbol)) {
+                        // example: @24
+                        assembled |= Integer.parseInt(symbol);
+                    } else {
+                        // example: @LOOP_START
+                        if (symbolTable.contains(symbol)) {
+                            assembled |= symbolTable.getAddress(symbol);
+                        } else {
+                            // this symbol must represent a new variable.
+                            assembled |= nextAvailableMemoryAddress;
+                            symbolTable.addEntry(symbol, nextAvailableMemoryAddress++);
+                        }
+                    }
+
                     // writer.write(instToString4Nibbles(assembled));
+                    writer.write(instToStringNoSpacing(assembled));
+                    writer.write("\n");
+                } else { // type must be L command
+                    // we've already parsed this symbol on the previous pass.
+                    // nothing to do here.
                 }
-                writer.write(instToStringNoSpacing(assembled));
-                writer.write("\n");
                 if (p.hasMoreCommands()) {
                     p.advance();
                 } else {
                     break;
                 }
             }
-        } catch (IOException e) {
+        } catch (
+
+        IOException e) {
             System.out.println("uh oh there bucko. some kinda file problem here:" + e);
         }
-
         p.close();
         writer.close();
     }

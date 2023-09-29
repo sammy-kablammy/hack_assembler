@@ -254,9 +254,14 @@ public class Assembler {
             System.out.println("Usage: 'java Assembler input_file.asm'");
             System.exit(1);
         }
-
-        Parser p = new Parser(new File(args[0]));
-        String outputFileName = args[0].substring(0, args[0].length() - 4) + ".hack";
+        String asmFilename = args[0];
+        if (!asmFilename.contains(".asm")) {
+            System.out.print("Invalid filename '" + asmFilename + "'. ");
+            System.out.println("Expected '<input_file>.asm'.");
+            System.exit(2);
+        }
+        Parser p = new Parser(new File(asmFilename));
+        String outputFileName = asmFilename.substring(0, asmFilename.length() - 4) + ".hack";
         FileWriter writer = new FileWriter(new File(outputFileName));
 
         try {

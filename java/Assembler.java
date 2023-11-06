@@ -105,8 +105,6 @@ class Parser {
         if (this.currentLine.charAt(0) == '(') {
             return COMMAND.L_COMMAND;
         }
-        // TODO maybe do a check to see if it is a valid C-type command??
-        // and like print an error otherwise???
         return COMMAND.C_COMMAND;
     }
 
@@ -330,23 +328,21 @@ public class Assembler {
         int outputFileLineNumber = 0;
 
         try {
-            // TODO maybe don't do while(true) but for now it'll be fine... right???
             // First pass: find all symbols and map them to RAM or ROM addresses
             // NOPE! only map labels to their line numbers.
             // variables are all handled during the second pass.
-            // NOTE: all custom/user-defined symbols should begin at 16.
+            // Recall that all custom/user-defined symbols should begin at 16.
             // (15 is the maximum predefined symbol)
             int nextAvailableMemoryAddress = 16;
             SymbolTable symbolTable = new SymbolTable();
-            while (true) {
+            boolean hasMoreCommands = true;
+            while (hasMoreCommands) {
                 // if this current line contains a symbol, then add it
                 COMMAND type = p.commandType();
                 if (type == COMMAND.L_COMMAND) {
                     // there is a (Label) symbol on this line
                     String symbol = p.symbol();
-                    // just to be clear, the symbol reeeallly shouldn't be
-                    // numeric. but i'll just check anyways. 👀 TODO
-                    if (!isNumeric(symbol) && !symbolTable.contains(symbol)) {
+                    if (!symbolTable.contains(symbol)) {
                         symbolTable.addEntry(symbol, outputFileLineNumber);
                     }
                     // [don't increment the output file line number for L-type
@@ -358,18 +354,17 @@ public class Assembler {
                     // there shouldn't be any new symbols on C-type lines.
                     outputFileLineNumber++;
                 }
-                if (p.hasMoreCommands()) {
-                    p.advance();
-                } else {
-                    break;
-                }
+                hasMoreCommands = p.hasMoreCommands();
+                p.advance();
             }
 
-            p.reset(); // TODO find a better way to do this
+            // since this is a two-pass assembler, we gotta restart from the
+            // beginning :(
+            p.reset();
 
             // Second pass: use the symbol table
-            // TODO maybe don't do while(true) but for now it'll be fine... right???
-            while (true) {
+            hasMoreCommands = true;
+            while (hasMoreCommands) {
                 int assembled = 0;
                 COMMAND type = p.commandType();
                 if (type == COMMAND.C_COMMAND) {
@@ -403,11 +398,8 @@ public class Assembler {
                     // we've already parsed this symbol on the previous pass.
                     // nothing to do here.
                 }
-                if (p.hasMoreCommands()) {
-                    p.advance();
-                } else {
-                    break;
-                }
+                hasMoreCommands = p.hasMoreCommands();
+                p.advance();
             }
         } catch (
 
